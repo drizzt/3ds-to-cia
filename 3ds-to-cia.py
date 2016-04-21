@@ -363,7 +363,7 @@ def get_titleid(filename):
         fh.readinto(header) #Reads header into structure
         return reverseCtypeArray(header.titleId)
 
-def is_decrypted(filename):
+def get_ncchFlag7(filename):
     with open(filename, "rb") as fh:
         header = ncsdHdr()
         fh.readinto(header) #Reads header into structure
@@ -373,7 +373,7 @@ def is_decrypted(filename):
         fh.readinto(header) #Reads header into structure
 
         ncchFlag7 = bytearray(header.flags)[7]
-        return ncchFlag7 & 0x4
+        return ncchFlag7
 
 def find_xorpad(titleid, crc32):
     expectedname = "%s.%08lx.Main.exheader.xorpad" % (titleid, crc32)
@@ -403,7 +403,9 @@ def find_xorpad(titleid, crc32):
 
 def convert_to_cia(filename, crc32):
     titleid = get_titleid(filename)
-    decrypted = is_decrypted(filename)
+    ncchFlag7 = get_ncchFlag7(filename)
+    decrypted = ncchFlag7 & 0x4
+    new_keyY = ncchFlag7 & 0x20
 
     xorpad_file = None if decrypted else find_xorpad(titleid, crc32)
 
@@ -450,6 +452,13 @@ def convert_to_cia(filename, crc32):
         print colorama.Fore.RED + "Error during CIA creation of '%s'" % filename
         print colorama.Style.RESET_ALL + "Relaunch the program with -v for more informations."
         print colorama.Fore.RED + "[ERROR]"
+    elif new_keyY:
+        print colorama.Fore.YELLOW + "[WARNING]"
+        print "This is a 9.6+ game which uses seed encryption."
+        print
+        print "The NCCH on 9.6+ games is seed encrypted and may cannot be used"
+        print "You need to decrypt it using Decryp9WIP or by visiting the eShop page of the game."
+        print colorama.Style.RESET_ALL
     else:
         print colorama.Fore.GREEN + "[OK]"
 
@@ -494,7 +503,8 @@ def get_tools_path():
 
 def main_check(filename, remove):
     titleid = get_titleid(filename)
-    if is_decrypted(filename):
+    # Decrypted
+    if get_ncchFlag7(filename) & 0x4:
         print colorama.Fore.YELLOW + " [NOT NEEDED]"
     elif not find_xorpad(titleid, crc32):
         print colorama.Fore.RED + " [NOT FOUND]"
@@ -518,7 +528,6 @@ if __name__ == "__main__":
 
     if not os.path.isdir("cia"):
         os.mkdir("cia")
-
 
     roms = glob.glob(os.path.join("roms", "*.[3zZ][dDiI][sSpP]"))
     tmpdir = tempfile.mkdtemp()
