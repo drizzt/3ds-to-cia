@@ -315,6 +315,21 @@ def verify_xorpad(filename, xorpad_file):
         orig_sha256 = fh.read(0x20)
         return sha256(exheader) == orig_sha256
 
+# Extract rom
+def extract_rom(filename):
+    with open(filename, "rb") as fh:
+        header = ncsdHdr()
+        fh.readinto(header) #Reads header into structure
+        for i in xrange(6):
+            if header.offset_sizeTable[i].offset:
+                ext = ".cxi" if i == 0 else ".cfa"
+                fh.seek(header.offset_sizeTable[i].offset * mediaUnitSize)
+                with open(os.path.join(tmpdir, str(i) + ext), "wb") as fw:
+                    for j in xrange(header.offset_sizeTable[i].size):
+                        buf = fh.read(mediaUnitSize)
+                        fw.write(buf)
+
+
 # Set SD flag in exheader, updates SHA256 in CXI and returns the save data size (KB)
 def fix_cxi(filename, xorpad_file):
     f = open(filename, "r+b")
@@ -389,7 +404,6 @@ def find_xorpad(titleid, crc32):
 def convert_to_cia(filename, crc32):
     titleid = get_titleid(filename)
     decrypted = is_decrypted(filename)
-    tools_path = get_tools_path()
 
     xorpad_file = None if decrypted else find_xorpad(titleid, crc32)
 
@@ -407,19 +421,10 @@ def convert_to_cia(filename, crc32):
         fstderr = fstdout = open(os.devnull, 'wb')
 
     # Extract cxi and cfa
-    ret = subprocess.call([os.path.join(tools_path, "rom_tool"), "--extract=" + tmpdir, filename], stdout = fstdout, stderr = fstderr)
-    if ret != 0:
-        print colorama.Fore.RED + "Error during extraction of '%s'" % filename
-        print colorama.Style.RESET_ALL + "Relaunch the program with -v for more informations."
-        print colorama.Fore.RED + "[ERROR]"
-        return ret
-
-    # Remove any update data
-    for x in glob.iglob(os.path.join(tmpdir, "*_UPDATEDATA.[cC][fF][aA]")):
-        os.remove(x)
+    extract_rom(filename)
 
     # Fix cxi
-    save_data_size = fix_cxi(glob.glob(os.path.join(tmpdir, "*_APPDATA.cxi"))[0], xorpad_file)
+    save_data_size = fix_cxi(glob.glob(os.path.join(tmpdir, "0.cxi"))[0], xorpad_file)
 
     # Generate CIA file
     contents = glob.glob(os.path.join(tmpdir, "*.[cC][xX][iI]"))
@@ -436,7 +441,7 @@ def convert_to_cia(filename, crc32):
         i += 1
 
     # Generate CIA file
-    ret = subprocess.call([os.path.join(tools_path, "make_cia")] + cmdline, stdout = fstdout, stderr = fstderr)
+    ret = subprocess.call([make_cia] + cmdline, stdout = fstdout, stderr = fstderr)
 
     for content in contents:
         os.remove(content)
@@ -450,13 +455,30 @@ def convert_to_cia(filename, crc32):
 
     return ret
 
-def get_tools_path():
-    is_64 = platform.machine().endswith("64")
+def which(cmd):
+    path = os.environ.get("PATH", os.defpath)
+    if not path:
+        return None
+    path = [get_tools_path()] + path.split(os.pathsep) + ["."]
+    if sys.platform == "win32":
+        pathext = os.environ.get("PATHEXT", "").split(os.pathsep)
+        files = [cmd + ext for ext in pathext]
+    else:
+        files = [cmd]
 
-    if not is_64:
-        print colorama.Fore.RED + "Sorry, 32 bit OSes are not supported yet."
-        print colorama.Style.RESET_ALL
-        sys.exit(1)
+    seen = set()
+    for dir in path:
+	normdir = os.path.normcase(dir)
+	if normdir not in seen:
+	    seen.add(normdir)
+	    for thefile in files:
+		name = os.path.join(dir, thefile)
+		if os.path.exists(name):
+		    return name
+    return None
+
+def get_tools_path():
+    bits = "64" if platform.machine().endswith("64") else "32"
 
     if getattr(sys, 'frozen', False):
         # we are running in a bundle
@@ -466,13 +488,9 @@ def get_tools_path():
         bundle_dir = os.path.dirname(os.path.abspath(__file__))
 
     if sys.platform == "win32":
-        return os.path.join(bundle_dir, "tools", "win64")
+        return os.path.join(bundle_dir, "tools", "win32")
     elif sys.platform == "linux" or sys.platform == "linux2":
-        return os.path.join(bundle_dir, "tools", "linux64")
-
-    print colorama.Fore.RED + "Sorry, your OS is not supported yet."
-    print colorama.Style.RESET_ALL
-    sys.exit(1)
+        return os.path.join(bundle_dir, "tools", "linux" + bits)
 
 def main_check(filename, remove):
     titleid = get_titleid(filename)
@@ -490,6 +508,17 @@ if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
 
     colorama.init()
+
+    make_cia = which("make_cia")
+
+    if make_cia is None:
+        print colorama.Fore.RED + "make_cia not found."
+        print colorama.Style.RESET_ALL
+        sys.exit(1)
+
+    if not os.path.isdir("cia"):
+        os.mkdir("cia")
+
 
     roms = glob.glob(os.path.join("roms", "*.[3zZ][dDiI][sSpP]"))
     tmpdir = tempfile.mkdtemp()
