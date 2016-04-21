@@ -39,6 +39,8 @@ import stat
 # pip install colorama
 import colorama
 
+VERBOSE = len(sys.argv) > 1 and sys.argv[1] == '-v'
+
 # Taked from ncchinfo_gen_exh.py (https://github.com/d0k3/Decrypt9WIP)
 mediaUnitSize = 0x200
 
@@ -398,8 +400,19 @@ def convert_to_cia(filename, crc32):
             print "Rom corrupted."
         return False
 
+    if VERBOSE:
+        fstdout = sys.stdout
+        fstderr = sys.stderr
+    else:
+        fstderr = fstdout = open(os.devnull, 'wb')
+
     # Extract cxi and cfa
-    subprocess.call([os.path.join(tools_path, "rom_tool"), "--extract=" + tmpdir, filename])
+    ret = subprocess.call([os.path.join(tools_path, "rom_tool"), "--extract=" + tmpdir, filename], stdout = fstdout, stderr = fstderr)
+    if ret != 0:
+        print colorama.Fore.RED + "Error during extraction of '%s'" % filename
+        print colorama.Style.RESET_ALL + "Relaunch the program with -v for more informations."
+        print colorama.Fore.RED + "[ERROR]"
+        return ret
 
     # Remove any update data
     for x in glob.iglob(os.path.join(tmpdir, "*_UPDATEDATA.[cC][fF][aA]")):
@@ -423,10 +436,17 @@ def convert_to_cia(filename, crc32):
         i += 1
 
     # Generate CIA file
-    ret = subprocess.call([os.path.join(tools_path, "make_cia")] + cmdline)
+    ret = subprocess.call([os.path.join(tools_path, "make_cia")] + cmdline, stdout = fstdout, stderr = fstderr)
 
     for content in contents:
         os.remove(content)
+
+    if ret != 0:
+        print colorama.Fore.RED + "Error during CIA creation of '%s'" % filename
+        print colorama.Style.RESET_ALL + "Relaunch the program with -v for more informations."
+        print colorama.Fore.RED + "[ERROR]"
+    else:
+        print colorama.Fore.GREEN + "[OK]"
 
     return ret
 
@@ -453,6 +473,18 @@ def get_tools_path():
     print colorama.Fore.RED + "Sorry, your OS is not supported yet."
     print colorama.Style.RESET_ALL
     sys.exit(1)
+
+def main_check(filename, remove):
+    titleid = get_titleid(filename)
+    if is_decrypted(filename):
+        print colorama.Fore.YELLOW + " [NOT NEEDED]"
+    elif not find_xorpad(titleid, crc32):
+        print colorama.Fore.RED + " [NOT FOUND]"
+        missing_xorpads.append([filename, crc32])
+    else:
+        if (remove):
+            os.remove(filename)
+        print colorama.Fore.GREEN + " [FOUND]"
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
@@ -485,8 +517,9 @@ if __name__ == "__main__":
                             basename = os.path.basename(entry.filename)
                             if not basename or not basename.lower().endswith(".3ds"):
                                 continue
-                            if check:
-                                sys.stdout.write("\t-> " + entry.filename)
+                            if check or VERBOSE == False:
+                                sys.stdout.write("\t-> " + entry.filename + " ")
+                                sys.stdout.flush()
                             else:
                                 print "\t-> " + entry.filename
                                 print ""
@@ -496,30 +529,20 @@ if __name__ == "__main__":
                             if check:
                                 with open(filename, "wb") as target:
                                     target.write(e.open(entry, 'r').read(0x10000))
-                                titleid = get_titleid(filename)
-                                if is_decrypted(filename):
-                                    print colorama.Fore.YELLOW + " [NOT NEEDED]"
-                                elif not find_xorpad(titleid, crc32):
-                                    print colorama.Fore.RED + " [NOT FOUND]"
-                                    missing_xorpads.append([filename, crc32])
-                                else:
-                                    os.remove(filename)
-                                    print colorama.Fore.GREEN + " [FOUND]"
+                                main_check(filename, True)
                             else:
                                 target = file(filename, "wb")
                                 with source, target:
                                     shutil.copyfileobj(source, target)
-                                if convert_to_cia(filename, crc32) != 0:
-                                    print colorama.Fore.RED + "[ERROR]"
-                                else:
-                                    print colorama.Fore.GREEN + "[OK]"
+                                convert_to_cia(filename, crc32)
                                 os.remove(filename)
 
                             sys.stdout.write(colorama.Style.RESET_ALL)
                             sys.stdout.flush()
                 else:
-                    if check:
-                        sys.stdout.write(rom)
+                    if check or VERBOSE == False:
+                        sys.stdout.write(rom + " ")
+                        sys.stdout.flush()
                     else:
                         print rom
                         print ""
@@ -531,19 +554,9 @@ if __name__ == "__main__":
                             crc32 = binascii.crc32(buf, crc32)
                         crc32 = crc32 & 0xFFFFFFFF
                     if check:
-                        titleid = get_titleid(rom)
-                        if is_decrypted(rom):
-                            print colorama.Fore.YELLOW + " [NOT NEEDED]"
-                        elif not find_xorpad(titleid, crc32):
-                            print colorama.Fore.RED + " [NOT FOUND]"
-                            missing_xorpads.append([rom, crc32])
-                        else:
-                            print colorama.Fore.GREEN + " [FOUND]"
+                        main_check(rom, False)
                     else:
-                        if convert_to_cia(rom, crc32) != 0:
-                            print colorama.Fore.RED + "[ERROR]"
-                        else:
-                            print colorama.Fore.GREEN + "[OK]"
+                        convert_to_cia(rom, crc32)
                     sys.stdout.write(colorama.Style.RESET_ALL)
                     sys.stdout.flush()
 
