@@ -454,10 +454,10 @@ def convert_to_cia(filename, crc32):
             print colorama.Fore.RED + "[ERROR]"
         elif new_keyY:
             print colorama.Fore.YELLOW + "[WARNING]"
-            print "This is a 9.6+ game which uses seed encryption."
+            print "This is a 9.6+ game which uses seed encryption and may not work directly!"
             print
-            print "The NCCH on 9.6+ games is seed encrypted and may cannot be used"
-            print "You need to decrypt it using Decryp9WIP or by visiting the eShop page of the game."
+            print "If this title is of the same region of your hardware you can decrypt it by visiting the eShop page of this title after the installation."
+            print "If this title is of a different region than your hardware you need to decrypt the CIA file using Decryp9WIP before the installation."
             print colorama.Style.RESET_ALL
         else:
             print colorama.Fore.GREEN + "[OK]"
