@@ -288,46 +288,45 @@ def sha256(s):
     return h.digest()
 
 # Verify is the xorpad is the correct one
-def verify_xorpad(filename, xorpad_file):
-    with open(filename, "rb") as fh:
-        offset = 0
-        fh.seek(0x100)
-        magic = fh.read(4)
-        if magic == b'NCSD':
-            fh.seek(0)
-            header = ncsdHdr()
-            fh.readinto(header) #Reads header into structure
-            for i in xrange(len(header.offset_sizeTable)):
-                if header.offset_sizeTable[i].offset:
-                    offset = header.offset_sizeTable[i].offset * \
-                        mediaUnitSize
-                    break
-
-        # get exheader
-        fh.seek(offset + 0x200)
-        exheader = bytearray(fh.read(0x400))
-        # decrypt exheader when needed
-        if not xorpad_file is None:
-            xorpad = bytearray(open(xorpad_file, "rb").read(0x400))
-            exheader = xor(exheader, xorpad)
-        # verify exheader sha256sum
-        fh.seek(offset + 0x160)
-        orig_sha256 = fh.read(0x20)
-        return sha256(exheader) == orig_sha256
-
-# Extract rom
-def extract_rom(filename):
-    with open(filename, "rb") as fh:
+def verify_xorpad(fh, xorpad_file):
+    offset = 0
+    fh.seek(0x100)
+    magic = fh.read(4)
+    if magic == b'NCSD':
+        fh.seek(0)
         header = ncsdHdr()
         fh.readinto(header) #Reads header into structure
-        for i in xrange(6):
+        for i in xrange(len(header.offset_sizeTable)):
             if header.offset_sizeTable[i].offset:
-                ext = ".cxi" if i == 0 else ".cfa"
-                fh.seek(header.offset_sizeTable[i].offset * mediaUnitSize)
-                with open(os.path.join(tmpdir, str(i) + ext), "wb") as fw:
-                    for j in xrange(header.offset_sizeTable[i].size):
-                        buf = fh.read(mediaUnitSize)
-                        fw.write(buf)
+                offset = header.offset_sizeTable[i].offset * \
+                    mediaUnitSize
+                break
+
+    # get exheader
+    fh.seek(offset + 0x200)
+    exheader = bytearray(fh.read(0x400))
+    # decrypt exheader when needed
+    if not xorpad_file is None:
+        xorpad = bytearray(open(xorpad_file, "rb").read(0x400))
+        exheader = xor(exheader, xorpad)
+    # verify exheader sha256sum
+    fh.seek(offset + 0x160)
+    orig_sha256 = fh.read(0x20)
+    return sha256(exheader) == orig_sha256
+
+# Extract rom
+def extract_rom(fh):
+    fh.seek(0)
+    header = ncsdHdr()
+    fh.readinto(header) #Reads header into structure
+    for i in xrange(6):
+        if header.offset_sizeTable[i].offset:
+            ext = ".cxi" if i == 0 else ".cfa"
+            fh.seek(header.offset_sizeTable[i].offset * mediaUnitSize)
+            with open(os.path.join(tmpdir, str(i) + ext), "wb") as fw:
+                for j in xrange(header.offset_sizeTable[i].size):
+                    buf = fh.read(mediaUnitSize)
+                    fw.write(buf)
 
 
 # Set SD flag in exheader, updates SHA256 in CXI and returns the save data size (KB)
@@ -357,23 +356,23 @@ def fix_cxi(filename, xorpad_file):
     f.write(exheader)
     return save_data_size
 
-def get_titleid(filename):
-    with open(filename, "rb") as fh:
-        header = ncsdHdr()
-        fh.readinto(header) #Reads header into structure
-        return reverseCtypeArray(header.titleId)
+def get_titleid(fh):
+    fh.seek(0)
+    header = ncsdHdr()
+    fh.readinto(header) #Reads header into structure
+    return reverseCtypeArray(header.titleId)
 
-def get_ncchFlag7(filename):
-    with open(filename, "rb") as fh:
-        header = ncsdHdr()
-        fh.readinto(header) #Reads header into structure
+def get_ncchFlag7(fh):
+    fh.seek(0)
+    header = ncsdHdr()
+    fh.readinto(header) #Reads header into structure
 
-        fh.seek(header.offset_sizeTable[0].offset * mediaUnitSize)
-        header = ncchHdr()
-        fh.readinto(header) #Reads header into structure
+    fh.seek(header.offset_sizeTable[0].offset * mediaUnitSize)
+    header = ncchHdr()
+    fh.readinto(header) #Reads header into structure
 
-        ncchFlag7 = bytearray(header.flags)[7]
-        return ncchFlag7
+    ncchFlag7 = bytearray(header.flags)[7]
+    return ncchFlag7
 
 def find_xorpad(titleid, crc32):
     expectedname = "%s.%08lx.Main.exheader.xorpad" % (titleid, crc32)
@@ -402,67 +401,68 @@ def find_xorpad(titleid, crc32):
                 return xorpad
 
 def convert_to_cia(filename, crc32):
-    titleid = get_titleid(filename)
-    ncchFlag7 = get_ncchFlag7(filename)
-    decrypted = ncchFlag7 & 0x4
-    new_keyY = ncchFlag7 & 0x20
+    with open(filename, "rb") as fh:
+        titleid = get_titleid(fh)
+        ncchFlag7 = get_ncchFlag7(fh)
+        decrypted = ncchFlag7 & 0x4
+        new_keyY = ncchFlag7 & 0x20
 
-    xorpad_file = None if decrypted else find_xorpad(titleid, crc32)
+        xorpad_file = None if decrypted else find_xorpad(titleid, crc32)
 
-    if verify_xorpad(filename, xorpad_file) == False:
-        if decrypted:
-            print "Xorpad file is not valid."
+        if verify_xorpad(fh, xorpad_file) == False:
+            if decrypted:
+                print "Xorpad file is not valid."
+            else:
+                print "Rom corrupted."
+            return False
+
+        if VERBOSE:
+            fstdout = sys.stdout
+            fstderr = sys.stderr
         else:
-            print "Rom corrupted."
-        return False
+            fstderr = fstdout = open(os.devnull, 'wb')
 
-    if VERBOSE:
-        fstdout = sys.stdout
-        fstderr = sys.stderr
-    else:
-        fstderr = fstdout = open(os.devnull, 'wb')
+        # Extract cxi and cfa
+        extract_rom(fh)
 
-    # Extract cxi and cfa
-    extract_rom(filename)
+        # Fix cxi
+        save_data_size = fix_cxi(glob.glob(os.path.join(tmpdir, "0.cxi"))[0], xorpad_file)
 
-    # Fix cxi
-    save_data_size = fix_cxi(glob.glob(os.path.join(tmpdir, "0.cxi"))[0], xorpad_file)
+        # Generate CIA file
+        contents = glob.glob(os.path.join(tmpdir, "*.[cC][xX][iI]"))
+        contents += glob.glob(os.path.join(tmpdir, "*.[cC][fF][aA]"))
 
-    # Generate CIA file
-    contents = glob.glob(os.path.join(tmpdir, "*.[cC][xX][iI]"))
-    contents += glob.glob(os.path.join(tmpdir, "*.[cC][fF][aA]"))
+        # Generate make_cia command line
+        ciafilename = os.path.join("cia", os.path.splitext(os.path.basename(filename))[0]) + ".cia"
 
-    # Generate make_cia command line
-    ciafilename = os.path.join("cia", os.path.splitext(os.path.basename(filename))[0]) + ".cia"
+        cmdline = ["-o", ciafilename, "--savesize=" + str(save_data_size)]
 
-    cmdline = ["-o", ciafilename, "--savesize=" + str(save_data_size)]
+        i = 0
+        for content in contents:
+            cmdline += ["--content" + str(i) + "=" + content, "--id_" + str(i) + "=" + str(i), "--index_" + str(i) + "=" + str(i)]
+            i += 1
 
-    i = 0
-    for content in contents:
-        cmdline += ["--content" + str(i) + "=" + content, "--id_" + str(i) + "=" + str(i), "--index_" + str(i) + "=" + str(i)]
-        i += 1
+        # Generate CIA file
+        ret = subprocess.call([make_cia] + cmdline, stdout = fstdout, stderr = fstderr)
 
-    # Generate CIA file
-    ret = subprocess.call([make_cia] + cmdline, stdout = fstdout, stderr = fstderr)
+        for content in contents:
+            os.remove(content)
 
-    for content in contents:
-        os.remove(content)
+        if ret != 0:
+            print colorama.Fore.RED + "Error during CIA creation of '%s'" % filename
+            print colorama.Style.RESET_ALL + "Relaunch the program with -v for more informations."
+            print colorama.Fore.RED + "[ERROR]"
+        elif new_keyY:
+            print colorama.Fore.YELLOW + "[WARNING]"
+            print "This is a 9.6+ game which uses seed encryption."
+            print
+            print "The NCCH on 9.6+ games is seed encrypted and may cannot be used"
+            print "You need to decrypt it using Decryp9WIP or by visiting the eShop page of the game."
+            print colorama.Style.RESET_ALL
+        else:
+            print colorama.Fore.GREEN + "[OK]"
 
-    if ret != 0:
-        print colorama.Fore.RED + "Error during CIA creation of '%s'" % filename
-        print colorama.Style.RESET_ALL + "Relaunch the program with -v for more informations."
-        print colorama.Fore.RED + "[ERROR]"
-    elif new_keyY:
-        print colorama.Fore.YELLOW + "[WARNING]"
-        print "This is a 9.6+ game which uses seed encryption."
-        print
-        print "The NCCH on 9.6+ games is seed encrypted and may cannot be used"
-        print "You need to decrypt it using Decryp9WIP or by visiting the eShop page of the game."
-        print colorama.Style.RESET_ALL
-    else:
-        print colorama.Fore.GREEN + "[OK]"
-
-    return ret
+        return ret
 
 def which(cmd):
     path = os.environ.get("PATH", os.defpath)
@@ -502,17 +502,18 @@ def get_tools_path():
         return os.path.join(bundle_dir, "tools", "linux" + bits)
 
 def main_check(filename, remove):
-    titleid = get_titleid(filename)
-    # Decrypted
-    if get_ncchFlag7(filename) & 0x4:
-        print colorama.Fore.YELLOW + " [NOT NEEDED]"
-    elif not find_xorpad(titleid, crc32):
-        print colorama.Fore.RED + " [NOT FOUND]"
-        missing_xorpads.append([filename, crc32])
-    else:
-        if (remove):
-            os.remove(filename)
-        print colorama.Fore.GREEN + " [FOUND]"
+    with open(filename, 'rb') as fh:
+        titleid = get_titleid(fh)
+        # Decrypted
+        if get_ncchFlag7(fh) & 0x4:
+            print colorama.Fore.YELLOW + " [NOT NEEDED]"
+        elif not find_xorpad(titleid, crc32):
+            print colorama.Fore.RED + " [NOT FOUND]"
+            missing_xorpads.append([filename, crc32])
+        else:
+            print colorama.Fore.GREEN + " [FOUND]"
+    if remove:
+        os.remove(filename)
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
