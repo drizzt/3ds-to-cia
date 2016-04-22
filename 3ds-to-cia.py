@@ -533,7 +533,7 @@ if __name__ == "__main__":
 
     if BITS == "32":
         print colorama.Fore.YELLOW + "You are using a 32-bit OS."
-        print "You won't be able to convert some big roms."
+        print "You won't be able to convert some big roms (2GB+)."
         print colorama.Style.RESET_ALL
 
     roms = glob.glob(os.path.join("roms", "*.[3zZ][dDiI][sSpP]"))
