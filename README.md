@@ -20,6 +20,9 @@ in `distro` directory you will find the resulting binary.
 
 Put the binary in a folder with `cia`, `roms` and `xorpads` empty directories, zip it and redistribuite.
 
+## Known Bugs
+Big roms cannot be converted (yet) on 32-bit operating systems or if you are using a 32-bit make_cia.
+
 ## Credits
 * `mid-kid` for the informations about the procedure
 * `3DSGuy` for make_cia

@@ -41,6 +41,8 @@ import colorama
 
 VERBOSE = len(sys.argv) > 1 and sys.argv[1] == '-v'
 
+BITS = "64" if platform.machine().endswith("64") else "32"
+
 # Taked from ncchinfo_gen_exh.py (https://github.com/d0k3/Decrypt9WIP)
 mediaUnitSize = 0x200
 
@@ -487,8 +489,6 @@ def which(cmd):
     return None
 
 def get_tools_path():
-    bits = "64" if platform.machine().endswith("64") else "32"
-
     if getattr(sys, 'frozen', False):
         # we are running in a bundle
         bundle_dir = sys._MEIPASS
@@ -497,9 +497,9 @@ def get_tools_path():
         bundle_dir = os.path.dirname(os.path.abspath(__file__))
 
     if sys.platform == "win32":
-        return os.path.join(bundle_dir, "tools", "win32")
+        return os.path.join(bundle_dir, "tools", "win" + BITS)
     elif sys.platform == "linux" or sys.platform == "linux2":
-        return os.path.join(bundle_dir, "tools", "linux" + bits)
+        return os.path.join(bundle_dir, "tools", "linux" + BITS)
 
 def main_check(filename, remove):
     with open(filename, 'rb') as fh:
@@ -529,6 +529,11 @@ if __name__ == "__main__":
 
     if not os.path.isdir("cia"):
         os.mkdir("cia")
+
+    if BITS == "32":
+        print colorama.Fore.YELLOW + "You are using a 32-bit OS."
+        print "You won't be able to convert some big roms."
+        print colorama.Style.RESET_ALL
 
     roms = glob.glob(os.path.join("roms", "*.[3zZ][dDiI][sSpP]"))
     tmpdir = tempfile.mkdtemp()
