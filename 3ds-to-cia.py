@@ -437,7 +437,7 @@ def convert_to_cia(filename, crc32):
         # Generate make_cia command line
         ciafilename = os.path.join("cia", os.path.splitext(os.path.basename(filename))[0]) + ".cia"
 
-        cmdline = ["-o", ciafilename, "--savesize=" + str(save_data_size)]
+        cmdline = ["-v", "-o", ciafilename, "--savesize=" + str(save_data_size)]
 
         i = 0
         for content in contents:
