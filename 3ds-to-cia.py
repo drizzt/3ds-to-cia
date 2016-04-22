@@ -510,6 +510,7 @@ def main_check(filename, remove):
         elif not find_xorpad(titleid, crc32):
             print colorama.Fore.RED + " [NOT FOUND]"
             missing_xorpads.append([filename, crc32])
+            return
         else:
             print colorama.Fore.GREEN + " [FOUND]"
     if remove:
